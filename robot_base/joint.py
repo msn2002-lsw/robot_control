@@ -1,7 +1,7 @@
 from typing import Optional
 
 # 假设前面的数据类存放在同级目录的 quadruped_components 模块中
-from .datatypes import Point, Euler
+from robot_base.datatypes import Point, Euler
 
 class Joint:
     def __init__(

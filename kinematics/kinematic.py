@@ -3,8 +3,8 @@ import numpy as np
 from typing import List, Tuple, Optional
 
 # 假设这些类在对应模块中已定义
-from ..robot_base.base import QuadrupedBase
-from ..robot_base.leg import QuadrupedLeg
+from robot_base.base import QuadrupedBase
+from robot_base.leg import QuadrupedLeg
 
 # 为了FK使用的辅助矩阵函数 (如果之前已经定义过可以复用)
 def translate_mat(x: float, y: float, z: float) -> np.ndarray:

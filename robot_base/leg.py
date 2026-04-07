@@ -3,8 +3,8 @@ import numpy as np
 from typing import List, Optional
 
 # 假设这些是你项目中已经定义好的类
-from .datatypes import GaitConfig
-from .joint import Joint
+from robot_base.datatypes import GaitConfig
+from robot_base.joint import Joint
 
 # ==========================================
 # 齐次变换矩阵辅助函数 (替代 geometry::Transformation 的底层逻辑)

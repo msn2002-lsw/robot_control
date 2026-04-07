@@ -2,7 +2,7 @@ import math
 import numpy as np
 
 # 假设 QuadrupedLeg 在同级模块中
-from ..robot_base.leg import QuadrupedLeg
+from robot_base.leg import QuadrupedLeg
 
 class TrajectoryPlanner:
     def __init__(self, leg: QuadrupedLeg):

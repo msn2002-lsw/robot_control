@@ -11,7 +11,7 @@ from typing import List, Optional
 from robot_base.datatypes import GaitConfig, Velocities, Pose, Point, Euler
 from robot_base.base import QuadrupedBase
 from body_controller.body_control import BodyController
-from robot_base.leg import LegController
+from leg_controller.leg_controller import LegController
 from kinematics.kinematic import Kinematics
 
 class QuadrupedController:
@@ -46,6 +46,13 @@ class QuadrupedController:
 
         # 3. 实例化核心控制组件
         self.base = QuadrupedBase(self.gait_config)
+        self.base.setup_robot_geometry(
+        base_x = 0.175,      # 比如机身总长35cm，一半就是0.175
+        base_y = 0.105,      # 比如机身总宽21cm，一半就是0.105
+        hip_length = 0.065,  # 髋关节连杆长度 6.5cm
+        upper_length = 0.20, # 大腿长 20cm
+        lower_length = 0.20  # 小腿长 20cm
+        )
         self.body_controller = BodyController(self.base)
         self.leg_controller = LegController(self.base, self._get_time_us())
         self.kinematics = Kinematics(self.base)
@@ -169,7 +176,7 @@ if __name__ == "__main__":
         time.sleep(1.0)
 
         print("\n--- 阶段 4: 步态测试 (向前行走 0.2 m/s) ---")
-        controller.set_cmd_vel(0.2, 0.0, 0.0)
+        controller.set_cmd_vel(0.0, 0.2, 0.0)
         
         # 模拟运行并在主线程以 10Hz 频率打印读取到的电机角度
         for i in range(20):

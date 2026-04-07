@@ -2,8 +2,8 @@ import numpy as np
 from typing import List, Optional
 
 # 假设这些类在同级目录的其他文件中已经定义好
-from .datatypes import Velocities, GaitConfig
-from .leg import QuadrupedLeg
+from robot_base.datatypes import Velocities, GaitConfig
+from robot_base.leg import QuadrupedLeg
 
 class QuadrupedBase:
     def __init__(self, gait_conf: Optional[GaitConfig] = None):
@@ -114,3 +114,52 @@ class QuadrupedBase:
 
             # 将全局配置的引用传给每一条腿
             leg.gait_config = self.gait_config
+
+    def setup_robot_geometry(self, base_x: float, base_y: float, 
+                             hip_length: float, upper_length: float, lower_length: float) -> None:
+        """
+        初始化机器人的运动学连杆参数 (单位: 米)。
+        使用 set_translation 给 Joint 类内部的 Point 对象赋值。
+        
+        :param base_x: 机身中心到髋关节的 X 轴距离 (纵向)
+        :param base_y: 机身中心到髋关节的 Y 轴距离 (横向)
+        :param hip_length: 髋关节电机到大腿电机的横向偏移 (外展/内收轴)
+        :param upper_length: 大腿连杆的长度
+        :param lower_length: 小腿连杆的长度
+        """
+        
+        # ---------------------------------------------------------
+        # 左前腿 (LF) - 位于第一象限 (+, +)
+        # ---------------------------------------------------------
+        # 1. 髋关节相对于机身中心的平移
+        self.lf.hip.set_translation(base_x, base_y, 0.0)
+        # 2. 大腿关节相对于髋关节的平移 (向外延展 hip_length)
+        self.lf.upper_leg.set_translation(0.0, hip_length, 0.0)
+        # 3. 小腿关节(膝盖)相对于大腿关节的平移 (向下延展 upper_length)
+        self.lf.lower_leg.set_translation(0.0, 0.0, -upper_length)
+        # 4. 足端相对于小腿关节的平移 (向下延展 lower_length)
+        self.lf.foot.set_translation(0.0, 0.0, -lower_length)
+
+        # ---------------------------------------------------------
+        # 右前腿 (RF) - 位于第四象限 (+, -)
+        # ---------------------------------------------------------
+        self.rf.hip.set_translation(base_x, -base_y, 0.0)
+        self.rf.upper_leg.set_translation(0.0, -hip_length, 0.0) # 向右外展为负
+        self.rf.lower_leg.set_translation(0.0, 0.0, -upper_length)
+        self.rf.foot.set_translation(0.0, 0.0, -lower_length)
+
+        # ---------------------------------------------------------
+        # 左后腿 (LH) - 位于第二象限 (-, +)
+        # ---------------------------------------------------------
+        self.lh.hip.set_translation(-base_x, base_y, 0.0)
+        self.lh.upper_leg.set_translation(0.0, hip_length, 0.0)
+        self.lh.lower_leg.set_translation(0.0, 0.0, -upper_length)
+        self.lh.foot.set_translation(0.0, 0.0, -lower_length)
+
+        # ---------------------------------------------------------
+        # 右后腿 (RH) - 位于第三象限 (-, -)
+        # ---------------------------------------------------------
+        self.rh.hip.set_translation(-base_x, -base_y, 0.0)
+        self.rh.upper_leg.set_translation(0.0, -hip_length, 0.0)
+        self.rh.lower_leg.set_translation(0.0, 0.0, -upper_length)
+        self.rh.foot.set_translation(0.0, 0.0, -lower_length)

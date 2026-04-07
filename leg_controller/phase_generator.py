@@ -2,7 +2,7 @@ import time
 from typing import List
 
 # 假设这个类已经定义好
-from ..robot_base.base import QuadrupedBase
+from robot_base.base import QuadrupedBase
 
 # 定义常量，与 C++ 的 SECONDS_TO_MICROS 对应
 SECONDS_TO_MICROS = 1_000_000

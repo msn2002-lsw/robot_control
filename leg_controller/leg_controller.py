@@ -3,11 +3,11 @@ import numpy as np
 from typing import List, Tuple
 
 # 假设以下类在同级或对应模块中已定义好
-from ..robot_base.base import QuadrupedBase
-from ..robot_base.datatypes import Velocities
-from .trajectory_planner import TrajectoryPlanner
-from .phase_generator import PhaseGenerator
-from ..robot_base.leg import QuadrupedLeg
+from robot_base.base import QuadrupedBase
+from robot_base.datatypes import Velocities
+from leg_controller.trajectory_planner import TrajectoryPlanner
+from leg_controller.phase_generator import PhaseGenerator
+from robot_base.leg import QuadrupedLeg
 
 class LegController:
     def __init__(self, quadruped_base: QuadrupedBase, current_time: int = None):

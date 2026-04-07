@@ -3,10 +3,10 @@ import numpy as np
 from typing import List
 
 # 假设这些类在对应模块中已定义好
-from ..robot_base.base import QuadrupedBase
-from ..robot_base.leg import QuadrupedLeg
-from ..robot_base.datatypes import Pose
-from ..kinematics.kinematic import Kinematics
+from robot_base.base import QuadrupedBase
+from robot_base.leg import QuadrupedLeg
+from robot_base.datatypes import Pose
+from kinematics.kinematic import Kinematics
 
 # 辅助矩阵函数 (如果之前已经定义在公用工具中，可以直接引入)
 def translate_mat(x: float, y: float, z: float) -> np.ndarray:
