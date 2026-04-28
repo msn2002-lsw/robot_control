@@ -145,7 +145,10 @@ class QuadrupedController:
         if self.is_running:
             print("[INFO] Stopping Quadruped Controller...")
             self.is_running = False
-            self._thread.join()
+
+            if self._thread is not None:
+                self._thread.join()
+
             print("[INFO] Controller stopped.")
 
 
