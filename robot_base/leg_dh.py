@@ -1,177 +1,198 @@
+import math
 import numpy as np
+from typing import List, Optional
 
-class Joint:
-    """
-    标准 DH 关节类
+# 假设这些是你项目中已经定义好的类
+from robot_base.datatypes import GaitConfig
+from robot_base.joint_dh import Joint
+from robot_base.mat_tool import translate_mat, rotate_x_mat, rotate_y_mat, rotate_z_mat, rpy_to_mat
 
-    标准 DH 参数:
-        theta: 绕 z_{i-1} 轴旋转角，单位 rad
-        d:     沿 z_{i-1} 轴平移距离
-        a:     沿 x_i 轴平移距离
-        alpha: 绕 x_i 轴旋转角，单位 rad
+# ==========================================
+# QuadrupedLeg 类定义
+# ==========================================
+class QuadrupedLeg:
+    def __init__(self):
+        self._no_of_links: int = 0
+        
+        # 使用 4x4 单位矩阵初始化 zero_stance
+        self._zero_stance: np.ndarray = np.eye(4) 
+        self._center_to_nominal: float = 0.0
+        
+        self._id: int = 0
+        self._last_touchdown: int = 0
+        self._in_contact: bool = True
+        self._knee_direction: int = 1  # 1 或 -1，取决于膝关节的弯曲方向
+        
+        self._gait_phase: bool = True
+        
+        # 初始化腿部关节
+        self.spine: Joint = Joint()  
+        self.hip_1: Joint = Joint()
+        self.hip_2: Joint = Joint()
+        self.upper_leg: Joint = Joint()
+        self.lower_leg: Joint = Joint()
+        self.ankle: Joint = Joint()
 
-    注意:
-        本类默认使用标准 DH 法，不是改进 DH 法。
-    """
+        self.foot: Joint = Joint()
+        
+        self.gait_config: Optional[GaitConfig] = None
+        
+        self.joint_chain: List[Joint] = [
+            self.spine,
+            self.hip_1,
+            self.hip_2,
+            self.upper_leg,
+            self.lower_leg,
+            self.ankle,
+            self.foot,
+        ]
+    
+    def spine_to_base(self) -> np.ndarray:
+        """计算从脊柱中心到基座坐标系的变换矩阵"""
+        T = np.eye(4)
 
-    def __init__(
-        self,
-        theta: float,
-        d: float,
-        a: float,
-        alpha: float,
-        joint_type: str = "revolute",
-        offset: float = 0.0,
-        qlim: tuple | None = None
-    ):
-        """
-        参数说明:
-            theta: DH 参数 theta
-            d: DH 参数 d
-            a: DH 参数 a
-            alpha: DH 参数 alpha
-            joint_type: 关节类型，可选 "revolute" 或 "prismatic"
-            offset: 关节零点偏置，单位 rad 或 m
-            qlim: 关节限位，例如 (-1.57, 1.57)
-        """
-
-        self.theta = theta
-        self.d = d
-        self.a = a
-        self.alpha = alpha
-
-        self.joint_type = joint_type
-        self.offset = offset
-        self.qlim = qlim
-
-        if self.joint_type not in ["revolute", "prismatic", "fixed"]:
-            raise ValueError("joint_type 只能是 'revolute', 'prismatic' 或 'fixed'")
-
-    def transform(self, q: float = 0.0) -> np.ndarray:
-        """
-        输出当前关节的标准 DH 齐次变换矩阵
-
-        对于 revolute 关节:
-            q 表示关节转角增量
-
-        对于 prismatic 关节:
-            q 表示关节伸缩位移增量
-
-        对于 fixed 关节:
-            q 不起作用
-
-        返回:
-            4x4 numpy.ndarray 齐次变换矩阵
-        """
-
-        if self.qlim is not None:
-            q_min, q_max = self.qlim
-            if not (q_min <= q <= q_max):
-                raise ValueError(f"关节变量 q={q} 超出限位范围 {self.qlim}")
-
-        if self.joint_type == "revolute":
-            theta = self.theta + q + self.offset
-            d = self.d
-
-        elif self.joint_type == "prismatic":
-            theta = self.theta
-            d = self.d + q + self.offset
-
-        else:  # fixed
-            theta = self.theta
-            d = self.d
-
-        a = self.a
-        alpha = self.alpha
-
-        ct = np.cos(theta)
-        st = np.sin(theta)
-        ca = np.cos(alpha)
-        sa = np.sin(alpha)
-
-        T = np.array([
-            [ct, -st * ca,  st * sa, a * ct],
-            [st,  ct * ca, -ct * sa, a * st],
-            [0,       sa,       ca,      d],
-            [0,        0,        0,      1]
-        ])
+        if self._id == 0:  # 左前腿
+            T = rotate_z_mat(np.pi/2)
+        elif self._id == 1:  # 右前腿
+            T = rotate_z_mat(-np.pi/2)
+        elif self._id == 2:  # 左后腿
+            T = rotate_z_mat(np.pi/2)
+        elif self._id == 3:  # 右后腿
+            T = rotate_z_mat(-np.pi/2)
 
         return T
 
-    def __repr__(self):
-        return (
-            f"Joint(theta={self.theta}, d={self.d}, a={self.a}, "
-            f"alpha={self.alpha}, joint_type='{self.joint_type}', "
-            f"offset={self.offset}, qlim={self.qlim})"
-        )
+    def foot_from_hip(self) -> np.ndarray:
+        """正向运动学：计算足端相对于髋关节的 4x4 变换矩阵, 用于站立式"""
+        # 初始坐标系：髋关节零点
+        T_global = np.eye(4)
 
-if __name__ == "__main__":
-    # 示例：一个旋转关节
-    joint1 = Joint(
-        theta=0.0,
-        d=0,
-        a=13,
-        alpha=np.pi / 2,
-        joint_type="revolute",
-        offset=0.0,
-        qlim=(-np.pi, np.pi)
-    )
-    joint2 = Joint(
-        theta=0.0,
-        d=105,
-        a=39,
-        alpha=0.0,
-        joint_type="revolute",
-        offset=0.0,
-        qlim=(-np.pi, np.pi)
-    )
-    joint3 = Joint(
-        theta=0.0,
-        d=0,
-        a=28,
-        alpha=-np.pi / 2,
-        joint_type="revolute",
-        offset=0.0,
-        qlim=(-np.pi, np.pi)
-    )
-    joint4 = Joint(
-        theta=0.0,
-        d=0,
-        a=49,
-        alpha=0,
-        joint_type="revolute",
-        offset=0.0,
-        qlim=(-np.pi, np.pi)
-    )
-    joint5 = Joint(
-        theta=0.0,
-        d=0,
-        a=60,
-        alpha=-np.pi / 2,
-        joint_type="revolute",
-        offset=-np.pi / 2,
-        qlim=(-np.pi, np.pi)
-    )
-    joint6 = Joint(
-        theta=0.0,
-        d=0,
-        a=60,
-        alpha=0,
-        joint_type="revolute",
-        offset=np.pi / 2,
-        qlim=(-np.pi, np.pi)
-    )
+        # 正向遍历整条运动学链 (假设 index 0 是与髋关节相连的第一个自由度)
+        for joint in self.joint_chain[1:]:  # 从 hip_2 开始，因为 hip_1 是髋关节的零点
+            T_global = T_global @ joint.transform()
+        return T_global
 
-    # 设置关节变量
-    q1 = np.deg2rad(0)
-    q2 = np.deg2rad(0)
-    q3 = np.deg2rad(-90)
-    q4 = np.deg2rad(0)
-    q5 = np.deg2rad(90)
-    q6 = np.deg2rad(-90)
+    def foot_from_spine(self) -> np.ndarray:
+        """
+        计算足端相对于基座(脊柱中心)的完整 4x4 变换矩阵
+        计算链：脊柱中心 -> 髋关节安装位置 -> 髋关节动态旋转 -> 足端
+        """
+        # 正向遍历整条运动学链 (假设 index 0 是与髋关节相连的第一个自由度)
+        T_spine_to_foot = np.eye(4)  # 从基座到足端的变换矩阵初始为单位矩阵 
 
-    # 计算末端执行器相对于基座的齐次变换矩阵
-    T06 = joint1.transform(q1) @ joint2.transform(q2) @ joint3.transform(q3) @ joint4.transform(q4) @ joint5.transform(q5) @ joint6.transform(q6)
-    np.set_printoptions(precision=4, suppress=True)
-    print("T06 =")
-    print(T06)
+        for joint in self.joint_chain:
+            T_spine_to_foot = T_spine_to_foot @ joint.transform()
+
+        # 将足端相对于脊柱dh坐标系建模转换成机器人整体基座坐标系的变换（X轴-机器人前方，Y轴-机器人左侧，Z轴-机器人上方:w）
+        if self._id == 0:  # 左前腿
+            T_spine_to_foot = T_spine_to_foot @ rotate_z_mat(np.pi/2)  # 根据零位站立配置添加平移
+        elif self._id == 1:  # 右前腿
+            T_spine_to_foot = T_spine_to_foot @ rotate_z_mat(-np.pi/2)  # 根据零位站立配置添加平移
+        elif self._id == 2:  # 左后腿
+            T_spine_to_foot = T_spine_to_foot @ rotate_z_mat(np.pi/2)  # 根据零位站立配置添加平移
+        elif self._id == 3:  # 右后腿
+            T_spine_to_foot = T_spine_to_foot @ rotate_z_mat(-np.pi/2)  # 根据零位站立配置添加平移
+
+        return T_spine_to_foot
+
+    def foot_from_base(self) -> np.ndarray:
+        """
+        计算足端相对于基座(脊柱中心)的完整 4x4 变换矩阵
+        计算链：基座 -> 脊柱中心 -> 髋关节安装位置 -> 髋关节动态旋转 -> 足端
+        """
+        # 正向遍历整条运动学链 (假设 index 0 是与髋关节相连的第一个自由度)
+        T_base_to_foot = np.eye(4)  # 从基座到足端的变换矩阵初始为单位矩阵 
+
+        T_base_to_foot = self.spine_to_base() @ T_base_to_foot  # 添加基座到脊柱中心的变换
+
+        for joint in self.joint_chain:
+            T_base_to_foot = T_base_to_foot @ joint.transform()
+
+        # 将足端相对于脊柱dh坐标系建模转换成机器人整体基座坐标系的变换（X轴-机器人前方，Y轴-机器人左侧，Z轴-机器人上方:w）
+        if self._id == 0:  # 左前腿
+            T_base_to_foot = T_base_to_foot @ rotate_z_mat(np.pi/2)  # 根据零位站立配置添加平移
+        elif self._id == 1:  # 右前腿
+            T_base_to_foot = T_base_to_foot @ rotate_z_mat(-np.pi/2)  # 根据零位站立配置添加平移
+        elif self._id == 2:  # 左后腿
+            T_base_to_foot = T_base_to_foot @ rotate_z_mat(np.pi/2)  # 根据零位站立配置添加平移
+        elif self._id == 3:  # 右后腿
+            T_base_to_foot = T_base_to_foot @ rotate_z_mat(-np.pi/2)  # 根据零位站立配置添加平移
+            pass
+
+        return T_base_to_foot
+
+    def zero_stance(self) -> np.ndarray:
+        """
+        TODO: 修改为机器人运动初始状态计算, 目前以初始状态代替
+        零位站立姿态，返回一个纯平移的 4x4 矩阵
+        """
+
+        if self.gait_config is None:
+            raise ValueError("GaitConfig is not set")
+            
+        x = self.hip_2.a + self.upper_leg.a + self.lower_leg.a + self.ankle.a
+        y = self.hip_1.d + self.ankle.a
+        z = self.ankle.a
+        # 将结果存为 4x4 平移矩阵
+        self._zero_stance = translate_mat(x, y, z)
+        return self.foot_from_base()  # 返回足端相对于基座坐标系的零位站立姿态
+
+    def get_center_to_nominal(self) -> float:
+        x = self.spine.a 
+        y = self.hip_1.d
+        return math.sqrt(x**2 + y**2)
+
+    # ------------------------------------------
+    # 关节设置及 Getter/Setter 保持不变
+    # ------------------------------------------
+    def set_joints(self, spine_joint: float, hip_joint_1: float, hip_joint_2: float, upper_leg_joint: float, lower_leg_joint: float, ankle_joint: float) -> None:
+        self.spine.theta = spine_joint
+        self.hip_1.theta = hip_joint_1
+        self.hip_2.theta = hip_joint_2
+        self.upper_leg.theta = upper_leg_joint
+        self.lower_leg.theta = lower_leg_joint
+        self.ankle.theta = ankle_joint
+
+    def set_joints_array(self, joints_array: List[float]) -> None:
+        for i in range(7):
+            self.joint_chain[i].theta = joints_array[i]
+
+    @property
+    def leg_id(self) -> int:
+        return self._id
+
+    @leg_id.setter
+    def leg_id(self, val: int) -> None:
+        self._id = val
+
+    @property
+    def last_touchdown(self) -> int:
+        return self._last_touchdown
+
+    @last_touchdown.setter
+    def last_touchdown(self, current_time: int) -> None:
+        self._last_touchdown = current_time
+
+    @property
+    def in_contact(self) -> bool:
+        return self._in_contact
+
+    @in_contact.setter
+    def in_contact(self, val: bool) -> None:
+        self._in_contact = val
+
+    @property
+    def gait_phase(self) -> bool:
+        return self._gait_phase
+
+    @gait_phase.setter
+    def gait_phase(self, phase: bool) -> None:
+        self._gait_phase = phase
+
+    @property
+    def knee_direction(self) -> int:
+        return self._knee_direction
+
+    @knee_direction.setter
+    def knee_direction(self, direction: int) -> None:
+        self._knee_direction = direction

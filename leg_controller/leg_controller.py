@@ -3,14 +3,14 @@ import numpy as np
 from typing import List, Tuple
 
 # 假设以下类在同级或对应模块中已定义好
-from robot_base.base import QuadrupedBase
+from robot_base.base_dh import QuadrupedBase
 from robot_base.datatypes import Velocities
 from leg_controller.trajectory_planner import TrajectoryPlanner
 from leg_controller.phase_generator import PhaseGenerator
-from robot_base.leg import QuadrupedLeg
+from robot_base.leg_dh import QuadrupedLeg
 
 class LegController:
-    def __init__(self, quadruped_base: QuadrupedBase, current_time: int = None):
+    def __init__(self, quadruped_base: QuadrupedBase, current_time: int|None):
         self.base_: QuadrupedBase = quadruped_base
         
         # 初始化相位生成器
@@ -74,7 +74,7 @@ class LegController:
         """雷伯特启发式控制公式"""
         return (stance_duration / 2.0) * target_velocity
 
-    def velocity_command(self, foot_positions: List[np.ndarray], req_vel: Velocities, current_time: int = None) -> None:
+    def velocity_command(self, foot_positions: List[np.ndarray], req_vel: Velocities, current_time: int|None) -> None:
         """
         主控方法：输入目标速度，输出/更新四条腿的 3D 坐标矩阵
         :param foot_positions: 包含4个 4x4 numpy 矩阵的列表 (按 LF, RF, LH, RH 顺序)

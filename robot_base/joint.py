@@ -11,7 +11,8 @@ class Joint:
         pos_z: float = 0.0, 
         or_r: float = 0.0, 
         or_p: float = 0.0, 
-        or_y: float = 0.0
+        or_y: float = 0.0,
+        axis: Point = Point()
     ):
         """
         初始化 Joint 类。
@@ -19,6 +20,7 @@ class Joint:
         和带参构造函数合并为一个 __init__ 方法。
         """
         self._theta: float = 0.0
+        self._axis: Point = axis
         self._translation: Point = Point(pos_x, pos_y, pos_z)
         self._rotation: Euler = Euler(or_r, or_p, or_y)
 
