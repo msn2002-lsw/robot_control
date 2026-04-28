@@ -2,13 +2,13 @@ import time
 from typing import List
 
 # 假设这个类已经定义好
-from robot_base.base import QuadrupedBase
+from robot_base.base_dh import QuadrupedBase
 
 # 定义常量，与 C++ 的 SECONDS_TO_MICROS 对应
 SECONDS_TO_MICROS = 1_000_000
 
 class PhaseGenerator:
-    def __init__(self, base: QuadrupedBase, current_time: int = None):
+    def __init__(self, base: QuadrupedBase, current_time: int|None):
         """
         初始化相位生成器。
         
@@ -24,6 +24,7 @@ class PhaseGenerator:
             
         self.has_swung: bool = False
         self.has_started: bool = False
+        self.has_finished_first_stride: bool = False
         
         # 相当于 C++ 中的 float array[4]
         # 分别存储 LF(0), RF(1), LH(2), RH(3) 的相位信号 (取值 0.0 ~ 1.0)
@@ -39,7 +40,7 @@ class PhaseGenerator:
         # time.time() 返回以秒为单位的浮点数，乘以一百万后转为整数
         return int(time.time() * SECONDS_TO_MICROS)
 
-    def run(self, target_velocity: float, step_length: float, current_time: int = None) -> None:
+    def run(self, target_velocity: float, step_length: float, current_time: int|None) -> None:
         """
         核心运行逻辑：根据流逝的时间和目标速度，计算四条腿的支撑/摆动相位。
         
@@ -90,14 +91,12 @@ class PhaseGenerator:
             elapsed_time_ref = stride_period
 
         # ==========================================
-        # 3. 对角步态 (Trot Gait) 相位差设定
-        # LF(0)和RH(3)为一组，RF(1)和LH(2)为另一组
-        # 两组之间相差 0.5 个周期
+        #  相位差设定
         # ==========================================
-        leg_clocks[0] = elapsed_time_ref - (0.0 * stride_period) # LF
-        leg_clocks[1] = elapsed_time_ref - (0.5 * stride_period) # RF
-        leg_clocks[2] = elapsed_time_ref - (0.5 * stride_period) # LH
-        leg_clocks[3] = elapsed_time_ref - (0.0 * stride_period) # RH
+        leg_clocks[0] = elapsed_time_ref - (self._base.gait_config.phase_offset[0] * stride_period) # LF
+        leg_clocks[1] = elapsed_time_ref - (self._base.gait_config.phase_offset[1] * stride_period) # RF
+        leg_clocks[2] = elapsed_time_ref - (self._base.gait_config.phase_offset[2] * stride_period) # LH
+        leg_clocks[3] = elapsed_time_ref - (self._base.gait_config.phase_offset[3] * stride_period) # RH
 
         # ==========================================
         # 4. 计算 0.0 -> 1.0 的归一化相位信号
@@ -120,11 +119,17 @@ class PhaseGenerator:
         # ==========================================
         # 5. 起步第一步的特殊平滑处理
         # ==========================================
-        if not self.has_swung and self.stance_phase_signal[0] < 0.5:
-            # 在第一步的前半段，强制抑制某几条腿的动作，防止原地打结起跳
-            self.stance_phase_signal[0] = 0.0
-            self.stance_phase_signal[3] = 0.0
-            self.swing_phase_signal[1] = 0.0
-            self.swing_phase_signal[2] = 0.0
-        else:
-            self.has_swung = True
+        # 只要全局时间还没有跑完完整的第一圈，就依然处于“起步寻优”阶段
+        if not self.has_finished_first_stride:
+            
+            for i in range(4):
+                # 核心逻辑：如果当前流逝的全局相位，还没达到这条腿预设的起步延迟点
+                # 说明这条腿还没到它该动的时候，必须强行抑制！
+                if elapsed_time_ref < self._base.gait_config.phase_offset[i] * stride_period:
+                    # 钳制在当前物理位置 (具体设为0.0还是保持当前IK坐标，取决于底层控制闭环)
+                    self.stance_phase_signal[i] = 0.0
+                    self.swing_phase_signal[i] = 0.0
+                    
+            # 只有当全局相位接近 1.0 时，所有腿才都至少动作过一次
+            if elapsed_time_ref >= 0.95 * stride_period:
+                self.has_finished_first_stride = True

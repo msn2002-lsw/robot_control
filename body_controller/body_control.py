@@ -7,42 +7,7 @@ from robot_base.base import QuadrupedBase
 from robot_base.leg import QuadrupedLeg
 from robot_base.datatypes import Pose
 from kinematics.kinematic import Kinematics
-
-# 辅助矩阵函数 (如果之前已经定义在公用工具中，可以直接引入)
-def translate_mat(x: float, y: float, z: float) -> np.ndarray:
-    return np.array([
-        [1.0, 0.0, 0.0,  x ],
-        [0.0, 1.0, 0.0,  y ],
-        [0.0, 0.0, 1.0,  z ],
-        [0.0, 0.0, 0.0, 1.0]
-    ])
-
-def rotate_x_mat(theta: float) -> np.ndarray:
-    c, s = math.cos(theta), math.sin(theta)
-    return np.array([
-        [1.0, 0.0,  0.0, 0.0],
-        [0.0,  c,   -s,  0.0],
-        [0.0,  s,    c,  0.0],
-        [0.0, 0.0,  0.0, 1.0]
-    ])
-
-def rotate_y_mat(theta: float) -> np.ndarray:
-    c, s = math.cos(theta), math.sin(theta)
-    return np.array([
-        [ c,  0.0,  s,  0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [-s,  0.0,  c,  0.0],
-        [0.0, 0.0, 0.0, 1.0]
-    ])
-
-def rotate_z_mat(theta: float) -> np.ndarray:
-    c, s = math.cos(theta), math.sin(theta)
-    return np.array([
-        [ c,  -s,   0.0, 0.0],
-        [ s,   c,   0.0, 0.0],
-        [0.0, 0.0,  1.0, 0.0],
-        [0.0, 0.0,  0.0, 1.0]
-    ])
+from robot_base.mat_tool import translate_mat, rotate_x_mat, rotate_y_mat, rotate_z_mat
 
 class BodyController:
     def __init__(self, quadruped_base: QuadrupedBase):

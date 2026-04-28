@@ -82,3 +82,4 @@ class GaitConfig:
     stance_depth: float = 0.0               # 支撑深度
     stance_duration: float = 0.0            # 支撑时长
     nominal_height: float = 0.0             # 额定高度
+    phase_offset: list[float] =field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0]) # 相位偏移

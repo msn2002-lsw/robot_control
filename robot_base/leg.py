@@ -5,38 +5,7 @@ from typing import List, Optional
 # 假设这些是你项目中已经定义好的类
 from robot_base.datatypes import GaitConfig
 from robot_base.joint import Joint
-
-# ==========================================
-# 齐次变换矩阵辅助函数 (替代 geometry::Transformation 的底层逻辑)
-# ==========================================
-def translate_mat(x: float, y: float, z: float) -> np.ndarray:
-    """生成 4x4 平移矩阵"""
-    return np.array([
-        [1.0, 0.0, 0.0,  x ],
-        [0.0, 1.0, 0.0,  y ],
-        [0.0, 0.0, 1.0,  z ],
-        [0.0, 0.0, 0.0, 1.0]
-    ])
-
-def rotate_x_mat(theta: float) -> np.ndarray:
-    """生成绕 X 轴旋转的 4x4 矩阵"""
-    c, s = np.cos(theta), np.sin(theta)
-    return np.array([
-        [1.0, 0.0,  0.0, 0.0],
-        [0.0,  c,   -s,  0.0],
-        [0.0,  s,    c,  0.0],
-        [0.0, 0.0,  0.0, 1.0]
-    ])
-
-def rotate_y_mat(theta: float) -> np.ndarray:
-    """生成绕 Y 轴旋转的 4x4 矩阵"""
-    c, s = np.cos(theta), np.sin(theta)
-    return np.array([
-        [ c,  0.0,  s,  0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [-s,  0.0,  c,  0.0],
-        [0.0, 0.0, 0.0, 1.0]
-    ])
+from robot_base.mat_tool import translate_mat, rotate_x_mat, rotate_y_mat, rotate_z_mat, rpy_to_mat
 
 # ==========================================
 # QuadrupedLeg 类定义
@@ -50,6 +19,7 @@ class QuadrupedLeg:
         self._center_to_nominal: float = 0.0
         
         self._id: int = 0
+        self._spine:float = 0
         self._last_touchdown: int = 0
         self._in_contact: bool = True
         
@@ -57,87 +27,117 @@ class QuadrupedLeg:
         self._is_pantograph: bool = False
         self._gait_phase: bool = True
         
-        self.hip: Joint = Joint()
+        # 修改关节数量
+        self.hip_1: Joint = Joint()
+        self.hip_2: Joint = Joint()
         self.upper_leg: Joint = Joint()
         self.lower_leg: Joint = Joint()
+        self.ankle_1: Joint = Joint()
+        self.ankle_2: Joint = Joint()
         self.foot: Joint = Joint()
         
         self.gait_config: Optional[GaitConfig] = None
         
         self.joint_chain: List[Joint] = [
-            self.hip,
-            self.upper_leg,
-            self.lower_leg,
-            self.foot
+            self.hip_1,
+            self.hip_2,
+            self.upper,
+            self.lower,
+            self.angle_1,
+            self.angle_2,
+            self.foot,
         ]
 
     def foot_from_hip(self) -> np.ndarray:
         """正向运动学：计算足端相对于髋关节的 4x4 变换矩阵"""
-        # 初始化为单位矩阵 Identity<4,4>()
-        foot_position = np.eye(4)
+        # 初始坐标系：髋关节零点
+        T_global = np.eye(4)
 
-        for i in range(3, 0, -1):
-            current_joint = self.joint_chain[i]
-            prev_joint = self.joint_chain[i - 1]
+        # 正向遍历整条运动学链 (假设 index 0 是与髋关节相连的第一个自由度)
+        for joint in self.joint_chain:
             
-            # foot_position.Translate(...)
-            # 在齐次坐标系中，等价于右乘平移矩阵
-            t_mat = translate_mat(current_joint.x, current_joint.y, current_joint.z)
-            foot_position = foot_position @ t_mat
+            # 1. 构建静态平移矩阵
+            T_trans = translate_mat(joint.x, joint.y, joint.z)
             
-            if i > 1:
-                # foot_position.RotateY(...)
-                r_mat = rotate_y_mat(prev_joint.theta)
-                foot_position = foot_position @ r_mat
-                
-        return foot_position
+            # 2. 构建静态旋转矩阵 (Roll, Pitch, Yaw)
+            T_static_rot = rpy_to_mat(joint.roll, joint.pitch, joint.yaw)
+            
+            # 3. 构建动态关节角旋转矩阵
+            T_dynamic_rot = np.eye(4) # 默认无动态旋转 (适用于刚性固定件)
+            
+            # 使用 elif 防止多次覆盖，同时确保 T_dynamic_rot 永远有定义
+            if getattr(joint, '_axis', None):
+                if joint._axis.x:
+                    T_dynamic_rot = rotate_x_mat(joint.theta)
+                elif joint._axis.y:
+                    T_dynamic_rot = rotate_y_mat(joint.theta)
+                elif joint._axis.z:
+                    T_dynamic_rot = rotate_z_mat(joint.theta)
+
+            # 4. 当前关节的完整局部变换矩阵：平移 -> 静态旋转 -> 动态旋转
+            T_local = T_trans @ T_static_rot @ T_dynamic_rot
+            
+            # 5. 全局坐标系右乘局部坐标系
+            T_global = T_global @ T_local
+
+        return T_global
 
     def foot_from_base(self) -> np.ndarray:
-        """正向运动学：计算足端相对于基座(Base)的 4x4 变换矩阵"""
-        foot_position = np.eye(4)
+        """
+        计算足端相对于基座(Base)的完整 4x4 变换矩阵
+        计算链：机身中心 -> 髋关节安装位置 -> 髋关节动态旋转 -> 足端
+        """
+        # 1. 静态平移：机身中心到髋关节安装位置 (安装在机身的哪个角)
+        t_static = translate_mat(self.hip.x, self.hip.y, self.hip.z)
         
-        hip_to_foot = self.foot_from_hip()
+        # 2. 静态姿态：髋关节在机身上的安装角度 (比如为了展态爬行，可能预设了 90度 Roll)
+        # 使用你之前定义的 rpy_to_mat
+        r_static = rpy_to_mat(self.hip.roll, self.hip.pitch, self.hip.yaw)
         
-        # foot_position.p = foot_from_hip().p;
-        # 提取 translation vector (4x4 矩阵的第4列前3行)，赋值给当前矩阵的平移部分
-        foot_position[0:3, 3] = hip_to_foot[0:3, 3]
+        # 3. 组合基座到髋关节中心的静态变换
+        T_base_to_hip_origin = t_static @ r_static
         
-        # foot_position.RotateX(...)
-        foot_position = foot_position @ rotate_x_mat(self.hip.theta)
+        # 4. 获取已经计算好的从髋关节旋转中心到足端的变换
+        # 注意：确保 foot_from_hip() 内部已经包含了 theta 的旋转
+        T_hip_to_foot = self.foot_from_hip()
         
-        # foot_position.Translate(...)
-        foot_position = foot_position @ translate_mat(self.hip.x, self.hip.y, self.hip.z)
+        # 5. 最终连乘：Base -> Hip -> Foot
+        # 这种顺序保证了足端坐标能正确反映出相对于机身中心的真实空间位姿
+        T_base_to_foot = T_base_to_hip_origin @ T_hip_to_foot
         
-        return foot_position
+        return T_base_to_foot
 
     def zero_stance(self) -> np.ndarray:
         """计算零位站立姿态，返回一个纯平移的 4x4 矩阵"""
         if self.gait_config is None:
             raise ValueError("GaitConfig is not set")
             
-        x = self.hip.x + self.upper_leg.x + self.gait_config.com_x_translation
-        y = self.hip.y + self.upper_leg.y
-        z = self.hip.z + self.upper_leg.z + self.lower_leg.z + self.foot.z
+        x = self.hip_1.x + self.ankle_1.x
+        y = self.hip_1.y + self.hip_2.y + self.upper_leg.y + self.lower_leg.y
+        z = self.hip_1.z + self.upper_leg.z + self.upper_leg.z + self.ankle_1.z + self.ankle_2 + self.foot.z
         
         # 将结果存为 4x4 平移矩阵
         self._zero_stance = translate_mat(x, y, z)
         return self._zero_stance
 
     def get_center_to_nominal(self) -> float:
-        x = self.hip.x + self.upper_leg.x
-        y = self.hip.y + self.upper_leg.y
+        x = self.hip_1.x 
+        y = self.hip_1.y
         return math.sqrt(x**2 + y**2)
 
     # ------------------------------------------
     # 关节设置及 Getter/Setter 保持不变
     # ------------------------------------------
-    def set_joints(self, hip_joint: float, upper_leg_joint: float, lower_leg_joint: float) -> None:
-        self.hip.theta = hip_joint
+    def set_joints(self, hip_joint_1: float, hip_joint_2: float, upper_leg_joint: float, lower_leg_joint: float, ankle_joint_1: float, ankle_joint_2: float) -> None:
+        self.hip_1.theta = hip_joint_1
+        self.hip_2.theta = hip_joint_2
         self.upper_leg.theta = upper_leg_joint
         self.lower_leg.theta = lower_leg_joint
+        self.angle_1.theta = ankle_joint_1
+        self.angle_2.theta = ankle_joint_2
 
     def set_joints_array(self, joints_array: List[float]) -> None:
-        for i in range(3):
+        for i in range(7):
             self.joint_chain[i].theta = joints_array[i]
 
     @property
