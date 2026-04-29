@@ -3,8 +3,8 @@ import numpy as np
 from typing import List
 
 # 假设这些类在对应模块中已定义好
-from robot_base.base import QuadrupedBase
-from robot_base.leg import QuadrupedLeg
+from robot_base.base_dh import QuadrupedBase
+from robot_base.leg_dh import QuadrupedLeg
 from robot_base.datatypes import Pose
 from kinematics.kinematic import Kinematics
 from robot_base.mat_tool import translate_mat, rotate_x_mat, rotate_y_mat, rotate_z_mat

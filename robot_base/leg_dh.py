@@ -31,7 +31,7 @@ class QuadrupedLeg:
         self.hip_2: Joint = Joint()
         self.upper_leg: Joint = Joint()
         self.lower_leg: Joint = Joint()
-        self.ankle: Joint = Joint()
+        self.ankel: Joint = Joint()
 
         self.foot: Joint = Joint()
         
@@ -43,7 +43,7 @@ class QuadrupedLeg:
             self.hip_2,
             self.upper_leg,
             self.lower_leg,
-            self.ankle,
+            self.ankel,
             self.foot,
         ]
     
@@ -83,16 +83,6 @@ class QuadrupedLeg:
         for joint in self.joint_chain:
             T_spine_to_foot = T_spine_to_foot @ joint.transform()
 
-        # 将足端相对于脊柱dh坐标系建模转换成机器人整体基座坐标系的变换（X轴-机器人前方，Y轴-机器人左侧，Z轴-机器人上方:w）
-        if self._id == 0:  # 左前腿
-            T_spine_to_foot = T_spine_to_foot @ rotate_z_mat(np.pi/2)  # 根据零位站立配置添加平移
-        elif self._id == 1:  # 右前腿
-            T_spine_to_foot = T_spine_to_foot @ rotate_z_mat(-np.pi/2)  # 根据零位站立配置添加平移
-        elif self._id == 2:  # 左后腿
-            T_spine_to_foot = T_spine_to_foot @ rotate_z_mat(np.pi/2)  # 根据零位站立配置添加平移
-        elif self._id == 3:  # 右后腿
-            T_spine_to_foot = T_spine_to_foot @ rotate_z_mat(-np.pi/2)  # 根据零位站立配置添加平移
-
         return T_spine_to_foot
 
     def foot_from_base(self) -> np.ndarray:
@@ -100,24 +90,21 @@ class QuadrupedLeg:
         计算足端相对于基座(脊柱中心)的完整 4x4 变换矩阵
         计算链：基座 -> 脊柱中心 -> 髋关节安装位置 -> 髋关节动态旋转 -> 足端
         """
-        # 正向遍历整条运动学链 (假设 index 0 是与髋关节相连的第一个自由度)
-        T_base_to_foot = np.eye(4)  # 从基座到足端的变换矩阵初始为单位矩阵 
+        T_base_to_foot = np.eye(4)  # 设置初始值 
 
-        T_base_to_foot = self.spine_to_base() @ T_base_to_foot  # 添加基座到脊柱中心的变换
+        # 先将基座标系转换成脊柱坐标系（基座标系方向：X轴-机器人前方，Y轴-机器人左侧，Z轴-机器人上方:w）
+        if self._id == 0:  # 左前腿
+            T_base_to_foot = T_base_to_foot @ rotate_z_mat(np.pi/2)  
+        elif self._id == 1:  # 右前腿
+            T_base_to_foot = T_base_to_foot @ rotate_z_mat(-np.pi/2)  
+        elif self._id == 2:  # 左后腿
+            T_base_to_foot = T_base_to_foot @ rotate_z_mat(np.pi/2)  
+        elif self._id == 3:  # 右后腿
+            T_base_to_foot = T_base_to_foot @ rotate_z_mat(-np.pi/2)
 
+        # 遍历其余关节
         for joint in self.joint_chain:
             T_base_to_foot = T_base_to_foot @ joint.transform()
-
-        # 将足端相对于脊柱dh坐标系建模转换成机器人整体基座坐标系的变换（X轴-机器人前方，Y轴-机器人左侧，Z轴-机器人上方:w）
-        if self._id == 0:  # 左前腿
-            T_base_to_foot = T_base_to_foot @ rotate_z_mat(np.pi/2)  # 根据零位站立配置添加平移
-        elif self._id == 1:  # 右前腿
-            T_base_to_foot = T_base_to_foot @ rotate_z_mat(-np.pi/2)  # 根据零位站立配置添加平移
-        elif self._id == 2:  # 左后腿
-            T_base_to_foot = T_base_to_foot @ rotate_z_mat(np.pi/2)  # 根据零位站立配置添加平移
-        elif self._id == 3:  # 右后腿
-            T_base_to_foot = T_base_to_foot @ rotate_z_mat(-np.pi/2)  # 根据零位站立配置添加平移
-            pass
 
         return T_base_to_foot
 
@@ -130,9 +117,9 @@ class QuadrupedLeg:
         if self.gait_config is None:
             raise ValueError("GaitConfig is not set")
             
-        x = self.hip_2.a + self.upper_leg.a + self.lower_leg.a + self.ankle.a
-        y = self.hip_1.d + self.ankle.a
-        z = self.ankle.a
+        x = self.hip_2.a + self.upper_leg.a + self.lower_leg.a + self.ankel.a
+        y = self.hip_1.d + self.ankel.a
+        z = self.ankel.a
         # 将结果存为 4x4 平移矩阵
         self._zero_stance = translate_mat(x, y, z)
         return self.foot_from_base()  # 返回足端相对于基座坐标系的零位站立姿态
@@ -145,13 +132,13 @@ class QuadrupedLeg:
     # ------------------------------------------
     # 关节设置及 Getter/Setter 保持不变
     # ------------------------------------------
-    def set_joints(self, spine_joint: float, hip_joint_1: float, hip_joint_2: float, upper_leg_joint: float, lower_leg_joint: float, ankle_joint: float) -> None:
+    def set_joints(self, spine_joint: float, hip_joint_1: float, hip_joint_2: float, upper_leg_joint: float, lower_leg_joint: float, ankel_joint: float) -> None:
         self.spine.theta = spine_joint
         self.hip_1.theta = hip_joint_1
         self.hip_2.theta = hip_joint_2
         self.upper_leg.theta = upper_leg_joint
         self.lower_leg.theta = lower_leg_joint
-        self.ankle.theta = ankle_joint
+        self.ankel.theta = ankel_joint
 
     def set_joints_array(self, joints_array: List[float]) -> None:
         for i in range(7):

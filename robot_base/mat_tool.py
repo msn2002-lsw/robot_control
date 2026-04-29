@@ -1,6 +1,6 @@
 import numpy as np
 # ==========================================
-# 齐次变换矩阵辅助函数 (替代 geometry::Transformation 的底层逻辑)
+# 齐次变换矩阵辅助函数 
 # ==========================================
 def translate_mat(x: float, y: float, z: float) -> np.ndarray:
     """生成 4x4 平移矩阵"""
@@ -48,3 +48,14 @@ def rpy_to_mat(roll: float, pitch: float, yaw: float) -> np.ndarray:
     R_y = rotate_y_mat(pitch)
     R_z = rotate_z_mat(yaw)
     return R_z @ R_y @ R_x 
+
+def inverse_transform(T: np.ndarray) -> np.ndarray:
+    """计算 4x4 齐次变换矩阵的逆"""
+    R = T[0:3, 0:3]
+    t = T[0:3, 3]
+    R_inv = R.T
+    t_inv = -R_inv @ t
+    T_inv = np.eye(4)
+    T_inv[0:3, 0:3] = R_inv
+    T_inv[0:3, 3] = t_inv
+    return T_inv

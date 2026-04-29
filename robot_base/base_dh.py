@@ -59,7 +59,7 @@ class QuadrupedBase:
             joint_positions.append(leg.hip_2.theta)
             joint_positions.append(leg.upper_leg.theta)
             joint_positions.append(leg.lower_leg.theta)
-            joint_positions.append(leg.ankle.theta)
+            joint_positions.append(leg.ankel.theta)
             joint_positions.append(leg.foot.theta)
             
         return joint_positions
@@ -90,7 +90,7 @@ class QuadrupedBase:
             leg.hip_2.theta = joints[index + 2]
             leg.upper_leg.theta = joints[index + 3]
             leg.lower_leg.theta = joints[index + 4]
-            leg.ankle.theta = joints[index + 5]
+            leg.ankel.theta = joints[index + 5]
             leg.foot.theta = joints[index + 6]
 
     def set_gait_config(self, gait_conf: GaitConfig) -> None:
@@ -139,7 +139,7 @@ class QuadrupedBase:
         self.lf.hip_2.set_arguments(0.0, l4, -np.pi/2) # 向右外展为负
         self.lf.upper_leg.set_arguments(0.0, l5, 0.0)
         self.lf.lower_leg.set_arguments(0.0, l6, -np.pi/2, joint_type="revolute", offset=-np.pi/2) # 膝盖向后弯曲，默认偏置 -90 度
-        self.lf.ankle.set_arguments(0.0, l7, 0.0, joint_type="revolute", offset=np.pi/2) # 踝关节固定不动
+        self.lf.ankel.set_arguments(0.0, l7, 0.0, joint_type="revolute", offset=np.pi/2) # 踝关节固定不动
         self.lf.foot.set_arguments(0.0, 0.0, 0.0)
         # ---------------------------------------------------------
         # 右前腿 (RF) - 位于第四象限 (+, -)
@@ -149,7 +149,7 @@ class QuadrupedBase:
         self.rf.hip_2.set_arguments(0.0, l4, np.pi/2) # 向右外展为负
         self.rf.upper_leg.set_arguments(0.0, l5, 0.0)
         self.rf.lower_leg.set_arguments(0.0, l6, np.pi/2, joint_type="revolute", offset=np.pi/2) # 膝盖向后弯曲，默认偏置 -90 度
-        self.rf.ankle.set_arguments(0.0, l7, 0.0, joint_type="revolute", offset=-np.pi/2) # 踝关节固定不动
+        self.rf.ankel.set_arguments(0.0, l7, 0.0, joint_type="revolute", offset=-np.pi/2) # 踝关节固定不动
         self.rf.foot.set_arguments(0.0, 0.0, 0.0)
         # ---------------------------------------------------------
         # 左后腿 (LH) - 位于第二象限 (-, +)
@@ -159,7 +159,7 @@ class QuadrupedBase:
         self.lh.hip_2.set_arguments(0.0, l4, np.pi/2) # 向右外展为负
         self.lh.upper_leg.set_arguments(0.0, l5, 0.0)
         self.lh.lower_leg.set_arguments(0.0, l6, np.pi/2, joint_type="revolute", offset=np.pi/2) # 膝盖向后弯曲，默认偏置 -90 度
-        self.lh.ankle.set_arguments(0.0, l7, 0.0, joint_type="revolute", offset=-np.pi/2) # 踝关节固定不动
+        self.lh.ankel.set_arguments(0.0, l7, 0.0, joint_type="revolute", offset=-np.pi/2) # 踝关节固定不动
         self.lh.foot.set_arguments(0.0, 0.0, 0.0)
         # ---------------------------------------------------------
         # 右后腿 (RH) - 位于第三象限 (-, -)
@@ -169,5 +169,5 @@ class QuadrupedBase:
         self.rh.hip_2.set_arguments(0.0, l4, -np.pi/2) # 向右外展为负
         self.rh.upper_leg.set_arguments(0.0, l5, 0.0)
         self.rh.lower_leg.set_arguments(0.0, l6, -np.pi/2, joint_type="revolute", offset=-np.pi/2) # 膝盖向后弯曲，默认偏置 -90 度
-        self.rh.ankle.set_arguments(0.0, l7, 0.0, joint_type="revolute", offset=np.pi/2) # 踝关节固定不动
+        self.rh.ankel.set_arguments(0.0, l7, 0.0, joint_type="revolute", offset=np.pi/2) # 踝关节固定不动
         self.rh.foot.set_arguments(0.0, 0.0, 0.0)

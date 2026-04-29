@@ -3,35 +3,9 @@ import numpy as np
 from typing import List, Tuple, Optional
 
 # 假设这些类在对应模块中已定义
-from robot_base.base import QuadrupedBase
-from robot_base.leg import QuadrupedLeg
-
-# 为了FK使用的辅助矩阵函数 (如果之前已经定义过可以复用)
-def translate_mat(x: float, y: float, z: float) -> np.ndarray:
-    return np.array([
-        [1.0, 0.0, 0.0,  x ],
-        [0.0, 1.0, 0.0,  y ],
-        [0.0, 0.0, 1.0,  z ],
-        [0.0, 0.0, 0.0, 1.0]
-    ])
-
-def rotate_y_mat(theta: float) -> np.ndarray:
-    c, s = math.cos(theta), math.sin(theta)
-    return np.array([
-        [ c,  0.0,  s,  0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [-s,  0.0,  c,  0.0],
-        [0.0, 0.0, 0.0, 1.0]
-    ])
-
-def rotate_x_mat(theta: float) -> np.ndarray:
-    c, s = math.cos(theta), math.sin(theta)
-    return np.array([
-        [1.0, 0.0,  0.0, 0.0],
-        [0.0,  c,   -s,  0.0],
-        [0.0,  s,    c,  0.0],
-        [0.0, 0.0,  0.0, 1.0]
-    ])
+from robot_base.base_dh import QuadrupedBase
+from robot_base.leg_dh import QuadrupedLeg
+from robot_base.mat_tool import translate_mat, inverse_transform 
 
 class Kinematics:
     def __init__(self, quadruped_base: QuadrupedBase):
@@ -53,115 +27,101 @@ class Kinematics:
             if ik_result is None or any(math.isnan(angle) for angle in ik_result):
                 return None  # 丢弃整个步态计划
                 
-            hip, upper, lower = ik_result
-            calculated_joints[i * 3] = hip
-            calculated_joints[i * 3 + 1] = upper
-            calculated_joints[i * 3 + 2] = lower
+            spine, hip1, hip2, upper, lower, ankel = ik_result
+            calculated_joints[i * 3] = spine
+            calculated_joints[i * 3 + 1] = hip1
+            calculated_joints[i * 3 + 2] = hip2
+            calculated_joints[i * 3 + 3] = upper
+            calculated_joints[i * 3 + 4] = lower
+            calculated_joints[i * 3 + 5] = ankel
 
         return calculated_joints
 
     @staticmethod
-    def inverse_single(leg: QuadrupedLeg, foot_position: np.ndarray) -> Tuple[float, float, float]:
+    def inverse_single(leg: QuadrupedLeg, foot_position: np.ndarray) -> Tuple[float, float, float, float, float, float]:
         """
+        TODO: 逆解公式，及其超出工作空间的异常处理，以及需要一定的限位
         计算单腿逆运动学 (核心几何解算)
-        :return: (hip_joint, upper_leg_joint, lower_leg_joint) 或 (nan, nan, nan) 如果不可达
+        :return: [6个关节角]或 [nan, ...] 如果不可达
         """
-        # 计算关节链在 Y 轴上的静态偏移累加
-        l0 = 0.0
-        for i in range(1, 4):
-            l0 += leg.joint_chain[i].y
-
-        # 计算大腿 (l1) 和 小腿 (l2) 的有效物理长度及内部几何偏置角
-        l1 = -math.sqrt(leg.lower_leg.x**2 + leg.lower_leg.z**2)
-        ik_alpha = math.acos(leg.lower_leg.x / l1) - (math.pi / 2.0) 
-
-        l2 = -math.sqrt(leg.foot.x**2 + leg.foot.z**2)
-        ik_beta = math.acos(leg.foot.x / l2) - (math.pi / 2.0) 
-
-        # 提取目标位置坐标
-        x = foot_position[0, 3]
-        y = foot_position[1, 3]
-        z = foot_position[2, 3]
-
-        # 1. 求解髋关节侧摆角 (Hip Roll)
-        hip_joint = -(math.atan(y / z) - ((math.pi / 2.0) - math.acos(-l0 / math.sqrt(y**2 + z**2))))
-
-        # 2. 坐标系逆变换：将 3D 点反向旋转并平移到大腿-小腿所在的 2D 平面
-        # 这里直接手写点绕 X 轴旋转，比操作 4x4 矩阵快得多
-        c = math.cos(-hip_joint)
-        s = math.sin(-hip_joint)
         
-        temp_y = y * c - z * s
-        temp_z = y * s + z * c
-        
-        x = x - leg.upper_leg.x
-        y = temp_y
-        z = temp_z - leg.upper_leg.z
+        PX = foot_position[0, 3]
+        PY = foot_position[1, 3]
+        PZ = foot_position[2, 3]
+        print(f"Target foot position: PX={PX}, PY={PY}, PZ={PZ}")
 
-        # 3. 可达性检查 (Reachability check)
-        target_to_foot = math.sqrt(x**2 + z**2)
-        if target_to_foot >= (abs(l1) + abs(l2)):
-            return float('nan'), float('nan'), float('nan')
+        l1 = leg.hip_1.d
+        l2 = leg.spine.a
+        l3 = leg.hip_1.a
+        l4 = leg.hip_2.a
+        l5 = leg.upper_leg.a
+        l6 = leg.lower_leg.a
+        l7 = leg.ankel.a
+        print(f"Leg parameters: l1={l1}, l2={l2}, l3={l3}, l4={l4}, l5={l5}, l6={l6}, l7={l7}")
 
-        # 4. 余弦定理求解膝关节角 (Knee Pitch)
-        lower_leg_joint = leg.knee_direction * math.acos((z**2 + x**2 - l1**2 - l2**2) / (2 * l1 * l2))
-        
-        # 5. 求解大腿俯仰角 (Thigh Pitch)
-        upper_leg_joint = (math.atan(x / z) - math.atan((l2 * math.sin(lower_leg_joint)) / (l1 + (l2 * math.cos(lower_leg_joint)))))
-        
-        # 补偿几何内部偏置
-        lower_leg_joint += ik_beta - ik_alpha
-        upper_leg_joint += ik_alpha
+        #腿部关节角度解算
+        # spine_joint, ankel_joint通常不参与逆解计算，直接读取当前角度值
+        spine_joint, ankel_joint = leg.spine.theta, leg.ankel.theta+leg.ankel.offset
 
-        # 6. 异常角度修正，防止大腿向后翻折
-        if leg.knee_direction < 0:
-            if upper_leg_joint < 0:
-                upper_leg_joint += math.pi
-        else:
-            if upper_leg_joint > 0:
-                upper_leg_joint += math.pi
+        # hip1 hip2
+        hip1_joint = math.asin((PZ + l7 * math.sin(ankel_joint)) / l3)
+        hip2_joint = -hip1_joint
 
-        return hip_joint, upper_leg_joint, lower_leg_joint
+        # lower_leg_joint
+        a = l3 / 2 * math.cos(leg.spine.theta + hip1_joint) + (
+            l2 + l4) * math.cos(leg.spine.theta) + l1 * math.sin(leg.spine.theta) + l3 / 2 * math.cos(leg.spine.theta - hip1_joint)
+        b = l3 / 2 * math.sin(leg.spine.theta + hip1_joint) + (
+            l2 + l4) * math.sin(leg.spine.theta) - l1 * math.cos(leg.spine.theta) + l3 / 2 * math.sin(leg.spine.theta - hip1_joint)
+        c = l6 + l7 * math.cos(leg.ankel.theta)
+        lower_leg_joint = - math.acos(((math.pow((PX - a), 2) + math.pow(
+            (PY - b), 2) - math.pow(l5, 2) - math.pow(c, 2))) / (2 * l5 * c))
+        lower_leg_joint = lower_leg_joint + leg.lower_leg.offset
+
+        # upper_leg_joint
+        d1 = l5 + c * (math.cos(lower_leg_joint) + math.sin(lower_leg_joint))
+        d2 = l5 + c * (math.cos(lower_leg_joint) - math.sin(lower_leg_joint))
+        upper_leg_joint = math.asin((PX - a + PY - b) / math.sqrt(math.pow(d1, 2) + math.pow(d2, 2))) - math.atan2(d1, d2) - spine_joint
+        upper_leg_joint = upper_leg_joint
+
+        return spine_joint, hip1_joint, hip2_joint, upper_leg_joint, lower_leg_joint, ankel_joint
 
     # ==========================================
     # 正向运动学 (Forward Kinematics)
     # ==========================================
     @staticmethod
-    def forward_from_hip(leg: QuadrupedLeg, upper_leg_theta: float, lower_leg_theta: float) -> np.ndarray:
+    def forward_from_hip(leg: QuadrupedLeg) -> np.ndarray:
         """从髋关节出发计算足端位置（不含hip自身的旋转）"""
         foot_position = np.eye(4)
-        
         # 按链条末端反推：脚端平移 -> 膝关节旋转 -> 小腿平移 -> 髋关节旋转 -> 大腿平移
-        foot_position = foot_position @ translate_mat(leg.foot.x, leg.foot.y, leg.foot.z)
-        foot_position = foot_position @ rotate_y_mat(lower_leg_theta)
-        
-        foot_position = foot_position @ translate_mat(leg.lower_leg.x, leg.lower_leg.y, leg.lower_leg.z)
-        foot_position = foot_position @ rotate_y_mat(upper_leg_theta)
-        
-        foot_position = foot_position @ translate_mat(leg.upper_leg.x, leg.upper_leg.y, leg.upper_leg.z)
-        
+        foot_position = leg.foot_from_hip()  # 从腿的运动学链计算足端位置
         return foot_position
 
     @staticmethod
-    def forward_from_base(leg: QuadrupedLeg, hip_theta: float, upper_leg_theta: float, lower_leg_theta: float) -> np.ndarray:
+    def forward_from_spine(leg: QuadrupedLeg) -> np.ndarray:
+        """从脊柱中心出发计算足端位置（含hip的旋转）"""
+        foot_position = np.eye(4)
+        foot_position = leg.foot_from_spine()  # 从腿的运动学链计算足端位置
+        return foot_position
+
+    @staticmethod
+    def forward_from_base(leg: QuadrupedLeg)-> np.ndarray:
         """从基座出发计算完整的足端位置"""
-        # 复用上一步逻辑
-        foot_position = Kinematics.forward_from_hip(leg, upper_leg_theta, lower_leg_theta)
-        
-        # 增加髋关节的横向旋转和平移
-        foot_position = foot_position @ rotate_x_mat(hip_theta)
-        foot_position = foot_position @ translate_mat(leg.hip.x, leg.hip.y, leg.hip.z)
-        
+        foot_position = np.eye(4)
+        foot_position = leg.foot_from_base()  # 从腿的运动学链计算足端位置
         return foot_position
 
     @staticmethod
     def transform_to_hip(foot_position: np.ndarray, leg: QuadrupedLeg) -> None:
-        """平移操作：直接修改传入的矩阵 (In-place)"""
-        t_mat = translate_mat(-leg.hip.x, -leg.hip.y, -leg.hip.z)
-        foot_position[:] = foot_position @ t_mat
+        """
+        TODO: 函数功能暂未完成
+        将base系下的坐标转换成hip系下的坐标
+        """
+        foot_position = foot_position @ inverse_transform(leg.foot_from_hip())
 
     @staticmethod
     def transform_to_base(foot_position: np.ndarray, leg: QuadrupedLeg) -> None:
-        """平移操作：直接修改传入的矩阵 (In-place)"""
-        t_mat = translate_mat(leg.hip.x, leg.hip.y, leg.hip.z)
-        foot_position[:] = foot_position @ t_mat
+        """
+        TODO: 函数功能暂未完成
+        将hip系下的坐标转换成base系下的坐标
+        """
+        foot_position = foot_position @ leg.foot_from_hip()

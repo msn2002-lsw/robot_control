@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from robot_base.datatypes import Velocities
 from robot_base.leg_dh import QuadrupedLeg
 from robot_base.base_dh import QuadrupedBase
@@ -6,6 +7,8 @@ from robot_base.datatypes import GaitConfig
 from leg_controller.phase_generator import PhaseGenerator
 from leg_controller.trajectory_planner import TrajectoryPlanner
 from leg_controller.leg_controller import LegController
+from robot_base.mat_tool import inverse_transform
+from kinematics.kinematic import Kinematics
 
 import matplotlib.pyplot as plt
 
@@ -300,8 +303,10 @@ if __name__ == "__main__":
     req_vel.linear.y = 0.0
     req_vel.angular.z = 0.0 
 
-    test_leg_controller(base, legcontrol, req_vel)
-    print("lf zero stance:",base.legs[0].zero_stance())
-    print("rf zero stance:",base.legs[1].zero_stance())
-    print("lh zero stance:",base.legs[2].zero_stance()) 
-    print("rh zero stance:",base.legs[3].zero_stance()) 
+    a=np.array([0.0, 0.0, 0.0, 1.0])
+
+    T = base.legs[3].foot_from_spine()  # 获取右后腿足端相对于基座的变换矩阵 
+    print("右后腿足端相对于基座的变换矩阵 T:")
+    print(T)
+    angle = Kinematics.inverse_single(base.legs[3], T)
+    print(angle)
